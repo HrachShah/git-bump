@@ -286,6 +286,28 @@ class TestBump(unittest.TestCase):
             with self.assertRaises(ValueError):
                 git_bump.bump("patch", file=tmp_path / "custom_version.txt", cwd=tmp_path, commit=False)
 
+    def test_bump_rejects_non_semver_current_version(self):
+        # The match-and-replace regex is lenient to survive JSON/TOML quoting,
+        # but the actual value in the file must be parseable SemVer.
+        # 'latest' would match the package.json regex but is not a version.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "package.json").write_text('{"version": "latest"}')
+            with self.assertRaises(ValueError) as cm:
+                git_bump.bump("patch", cwd=tmp_path, commit=False)
+            self.assertIn("latest", str(cm.exception))
+            # The file must not have been mutated on the error path.
+            self.assertEqual((tmp_path / "package.json").read_text(), '{"version": "latest"}')
+
+    def test_bump_rejects_single_part_current_version(self):
+        # '0' matches the regex but is not three-part SemVer.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "VERSION").write_text("0\n")
+            with self.assertRaises(ValueError):
+                git_bump.bump("patch", cwd=tmp_path, commit=False)
+            self.assertEqual((tmp_path / "VERSION").read_text(), "0\n")
+
 
 class TestCLI(unittest.TestCase):
     def test_help_exits_zero(self):
@@ -312,6 +334,37 @@ class TestCLI(unittest.TestCase):
             new = git_bump.bump("patch", cwd=tmp_path, commit=False, dry_run=True)
             self.assertEqual(new, "1.0.1")
             self.assertEqual((tmp_path / "VERSION").read_text(), "1.0.0\n")  # unchanged
+
+    def test_cwd_flag_points_at_other_directory(self):
+        # The CLI's --cwd should let auto-detection look in a directory
+        # other than os.getcwd(), and the file write should land there too.
+        with tempfile.TemporaryDirectory() as project_dir:
+            project = Path(project_dir)
+            (project / "VERSION").write_text("1.0.0\n")
+            # The "current" dir deliberately has no version file at all
+            with tempfile.TemporaryDirectory() as scratch_dir:
+                scratch = Path(scratch_dir)
+                with mock.patch("sys.argv", ["git-bump", "patch", "--cwd", str(project), "--no-commit"]):
+                    rc = git_bump.main()
+                self.assertEqual(rc, 0)
+                self.assertEqual((project / "VERSION").read_text(), "1.0.1\n")
+                # The scratch dir was never touched
+                self.assertEqual(list(scratch.iterdir()), [])
+
+    def test_cwd_nonexistent_path_errors(self):
+        with mock.patch("sys.argv", ["git-bump", "patch", "--cwd", "/no/such/dir/here/12345"]):
+            with self.assertRaises(SystemExit) as cm:
+                git_bump.main()
+            self.assertEqual(cm.exception.code, 2)  # argparse usage error
+
+    def test_cwd_path_is_a_file_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            file_path = Path(tmp) / "not-a-dir.txt"
+            file_path.write_text("x")
+            with mock.patch("sys.argv", ["git-bump", "patch", "--cwd", str(file_path)]):
+                with self.assertRaises(SystemExit) as cm:
+                    git_bump.main()
+                self.assertEqual(cm.exception.code, 2)
 
 
 # --- regex helpers: the same patterns used in git_bump._DETECT, exposed

@@ -157,6 +157,12 @@ def bump(
         raise ValueError(f"could not find a version field in {path}")
 
     current = m.group("v")
+    # The match-regex is intentionally lenient to survive JSON/TOML quoting,
+    # but it would happily match a non-SemVer value like 'latest', '0', or 'next'.
+    # Validate here so the user gets a clear message instead of a confusing
+    # parse_semver error after they picked a bump level.
+    parse_semver(current)
+
     if set_version is not None:
         new = set_version
         # Validate
@@ -225,6 +231,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Print what would happen but make no changes.",
     )
     parser.add_argument(
+        "--cwd",
+        metavar="DIR",
+        default=None,
+        help="Operate on this directory instead of the current working directory "
+             "(auto-detection, git commands, and the file write all happen here).",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"git-bump {__version__}",
@@ -234,6 +247,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.set_version is None and args.level is None:
         parser.error("either a bump level (major/minor/patch) or --set VERSION is required")
 
+    cwd = Path(args.cwd) if args.cwd is not None else None
+    if cwd is not None and not cwd.is_dir():
+        parser.error(f"--cwd path is not a directory: {cwd}")
+
     try:
         bump(
             args.level,
@@ -241,6 +258,7 @@ def main(argv: list[str] | None = None) -> int:
             set_version=args.set_version,
             commit=not args.no_commit,
             dry_run=args.dry_run,
+            cwd=cwd,
         )
     except FileNotFoundError as e:
         print(f"error: {e}", file=sys.stderr)
