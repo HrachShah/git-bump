@@ -102,6 +102,12 @@ class TestReplaceVersion(unittest.TestCase):
         out = git_bump.replace_version(text, regex, "0.1.1")
         self.assertEqual(out, '__version__ = "0.1.1"\n')
 
+    def test_init_py_single_quotes(self):
+        text = '__version__ = \'0.1.0\'\n'
+        regex = re_compile_init()
+        out = git_bump.replace_version(text, regex, "0.1.1")
+        self.assertEqual(out, '__version__ = \'0.1.1\'\n')
+
     def test_version_file(self):
         text = "1.2.3\n"
         regex = re_compile_version()
