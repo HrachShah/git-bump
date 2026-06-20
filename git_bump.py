@@ -151,7 +151,15 @@ def bump(
     else:
         path, regex = detect_file(start)
 
-    original = path.read_text(encoding="utf-8")
+    with path.open("rb") as f:
+        raw = f.read()
+    # Preserve the file's line endings: detect whether CRLF is present, then
+    # normalize to LF for regex matching and writing, and re-apply the original
+    # ending on write. Files authored on Windows would otherwise be silently
+    # converted to LF (and trigger noisy whole-file diffs in the next commit).
+    had_crlf = b"\r\n" in raw
+    original = raw.decode("utf-8")
+    original = original.replace("\r\n", "\n")
     m = regex.search(original)
     if m is None:
         raise ValueError(f"could not find a version field in {path}")
@@ -184,7 +192,9 @@ def bump(
             print(f"[dry-run] would create commit and tag v{new}", file=sys.stderr)
         return new
 
-    path.write_text(new_text, encoding="utf-8")
+    out_text = new_text.replace("\n", "\r\n") if had_crlf else new_text
+    with path.open("wb") as f:
+        f.write(out_text.encode("utf-8"))
 
     if commit:
         _run_git("add", str(path), cwd=cwd)

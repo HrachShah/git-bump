@@ -308,6 +308,41 @@ class TestBump(unittest.TestCase):
                 git_bump.bump("patch", cwd=tmp_path, commit=False)
             self.assertEqual((tmp_path / "VERSION").read_text(), "0\n")
 
+    def test_bump_preserves_crlf_line_endings(self):
+        # A VERSION file authored on Windows keeps CRLF; bumping should not
+        # silently rewrite the whole file with LF (that would produce a noisy
+        # diff in the next git status and break any tooling that relies on
+        # the file's original line endings).
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "VERSION").write_text("1.0.0\r\n")
+            new = git_bump.bump("patch", cwd=tmp_path, commit=False)
+            self.assertEqual(new, "1.0.1")
+            self.assertEqual((tmp_path / "VERSION").read_bytes(), b"1.0.1\r\n")
+
+    def test_bump_preserves_lf_line_endings(self):
+        # LF should stay LF — re-applying CRLF only because CRLF was detected.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "VERSION").write_text("1.0.0\n")
+            git_bump.bump("patch", cwd=tmp_path, commit=False)
+            self.assertEqual((tmp_path / "VERSION").read_bytes(), b"1.0.1\n")
+
+    def test_bump_preserves_crlf_in_package_json(self):
+        # The CRLF handling should apply to every supported file type, not
+        # just VERSION — package.json on Windows is a common case.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "package.json").write_bytes(
+                b'{\r\n  "name": "x",\r\n  "version": "1.2.3"\r\n}\r\n'
+            )
+            new = git_bump.bump("patch", cwd=tmp_path, commit=False)
+            self.assertEqual(new, "1.2.4")
+            self.assertEqual(
+                (tmp_path / "package.json").read_bytes(),
+                b'{\r\n  "name": "x",\r\n  "version": "1.2.4"\r\n}\r\n',
+            )
+
 
 class TestCLI(unittest.TestCase):
     def test_help_exits_zero(self):
