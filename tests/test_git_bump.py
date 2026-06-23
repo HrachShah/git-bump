@@ -96,6 +96,23 @@ class TestReplaceVersion(unittest.TestCase):
         out = git_bump.replace_version(text, regex, "0.2.0")
         self.assertEqual(out, '[project]\nname = "x"\nversion = "0.2.0"\n')
 
+
+    def test_pyproject_toml_single_quotes(self):
+        text = "[project]\nname = 'x'\nversion = '0.1.0'\n"
+        regex = re_compile_pyproject()
+        out = git_bump.replace_version(text, regex, "0.2.0")
+        self.assertEqual(out, "[project]\nname = 'x'\nversion = '0.2.0'\n")
+
+    def test_pyproject_toml_indented(self):
+        # `[tool.poetry]` blocks indent the version field; the previous
+        # `^version` regex only matched column-0 lines and refused to
+        # touch the file, so poetry projects hit the same 'version regex
+        # did not match' ValueError as a single-quote pyproject.
+        text = '[tool.poetry]\n    name = "x"\n    version = "0.1.0"\n'
+        regex = re_compile_pyproject()
+        out = git_bump.replace_version(text, regex, "0.2.0")
+        self.assertEqual(out, '[tool.poetry]\n    name = "x"\n    version = "0.2.0"\n')
+
     def test_init_py(self):
         text = '__version__ = "0.1.0"\n'
         regex = re_compile_init()
