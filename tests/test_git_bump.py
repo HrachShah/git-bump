@@ -102,6 +102,44 @@ class TestReplaceVersion(unittest.TestCase):
         out = git_bump.replace_version(text, regex, "0.1.1")
         self.assertEqual(out, '__version__ = "0.1.1"\n')
 
+    def test_init_py_single_quotes(self):
+        # The pyproject.toml regex accepts both quote styles; __init__.py
+        # should too so a user who already has single-quoted __version__
+        # doesn't get a "could not find a version field" error.
+        text = "__version__ = '0.1.0'\n"
+        regex = re_compile_init()
+        out = git_bump.replace_version(text, regex, "0.1.1")
+        self.assertEqual(out, "__version__ = '0.1.1'\n")
+
+    def test_init_py_indented(self):
+        # Match the pyproject.toml behavior: the regex should accept leading
+        # whitespace so files where __version__ is indented (e.g. inside
+        # TYPE_CHECKING, or below a leading docstring) still parse.
+        text = '    __version__ = "0.1.0"\n'
+        regex = re_compile_init()
+        out = git_bump.replace_version(text, regex, "0.1.1")
+        self.assertEqual(out, '    __version__ = "0.1.1"\n')
+
+    def test_init_py_indented_single_quote(self):
+        text = "    __version__ = '0.1.0'\n"
+        regex = re_compile_init()
+        out = git_bump.replace_version(text, regex, "0.1.1")
+        self.assertEqual(out, "    __version__ = '0.1.1'\n")
+
+    def test_init_py_extra_whitespace_around_equals(self):
+        text = '__version__    =    "0.1.0"\n'
+        regex = re_compile_init()
+        out = git_bump.replace_version(text, regex, "0.1.1")
+        self.assertEqual(out, '__version__    =    "0.1.1"\n')
+
+    def test_init_py_trailing_comment(self):
+        # Common pattern: __version__ = "0.1.0"  # release: 2024-01-01
+        # The version value is what we update; the comment stays put.
+        text = '__version__ = "0.1.0"  # bump me\n'
+        regex = re_compile_init()
+        out = git_bump.replace_version(text, regex, "0.1.1")
+        self.assertEqual(out, '__version__ = "0.1.1"  # bump me\n')
+
     def test_version_file(self):
         text = "1.2.3\n"
         regex = re_compile_version()
