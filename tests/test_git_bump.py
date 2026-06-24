@@ -120,6 +120,34 @@ class TestReplaceVersion(unittest.TestCase):
         with self.assertRaises(ValueError):
             git_bump.replace_version(text, regex, "3.0.0")
 
+    def test_init_py_single_quoted(self):
+        # __version__ = '1.2.3' is valid Python and must be detected
+        text = "__version__ = '1.2.3'\n"
+        regex = re_compile_init()
+        out = git_bump.replace_version(text, regex, "1.2.4")
+        self.assertEqual(out, "__version__ = '1.2.4'\n")
+
+    def test_init_py_double_quoted_unchanged(self):
+        # Sanity: double-quoted still works after the regex change
+        text = '__version__ = "1.2.3"\n'
+        regex = re_compile_init()
+        out = git_bump.replace_version(text, regex, "1.2.4")
+        self.assertEqual(out, '__version__ = "1.2.4"\n')
+
+    def test_pyproject_single_quoted(self):
+        # TOML allows 'literal' strings; many projects use single quotes
+        text = "[project]\nversion = '0.1.0'\n"
+        regex = re_compile_pyproject()
+        out = git_bump.replace_version(text, regex, "0.2.0")
+        self.assertEqual(out, "[project]\nversion = '0.2.0'\n")
+
+    def test_pyproject_double_quoted_unchanged(self):
+        # Sanity: double-quoted still works after the regex change
+        text = '[project]\nversion = "0.1.0"\n'
+        regex = re_compile_pyproject()
+        out = git_bump.replace_version(text, regex, "0.2.0")
+        self.assertEqual(out, '[project]\nversion = "0.2.0"\n')
+
 
 class TestDetectFile(unittest.TestCase):
     def test_detects_package_json(self):
@@ -143,6 +171,24 @@ class TestDetectFile(unittest.TestCase):
             (tmp_path / "__init__.py").write_text('__version__ = "1.0.0"\n')
             path, regex = git_bump.detect_file(tmp_path)
             self.assertEqual(path.name, "__init__.py")
+
+    def test_detects_init_py_single_quoted(self):
+        # Single-quoted __version__ is valid Python; detect_file must still find it.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "__init__.py").write_text("__version__ = '1.0.0'\n")
+            path, regex = git_bump.detect_file(tmp_path)
+            self.assertEqual(path.name, "__init__.py")
+            self.assertIsNotNone(regex.search("__version__ = '1.0.0'\n"))
+
+    def test_detects_pyproject_single_quoted(self):
+        # TOML literal strings use single quotes; detect_file must still find them.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "pyproject.toml").write_text("[project]\nversion = '1.0.0'\n")
+            path, regex = git_bump.detect_file(tmp_path)
+            self.assertEqual(path.name, "pyproject.toml")
+            self.assertIsNotNone(regex.search("[project]\nversion = '1.0.0'\n"))
 
     def test_detects_version(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -239,6 +285,30 @@ class TestBump(unittest.TestCase):
             (tmp_path / "VERSION").write_text("1.0.0\n")
             git_bump.bump("patch", cwd=tmp_path, commit=False, dry_run=True)
             self.assertEqual((tmp_path / "VERSION").read_text(), "1.0.0\n")
+
+    def test_bump_init_py_single_quoted_round_trip(self):
+        # End-to-end: a project whose __version__ is single-quoted must bump
+        # cleanly via auto-detection. The single-quote style must be preserved
+        # in the on-disk file (no silent rewrite to double-quotes).
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "__init__.py").write_text("__version__ = '1.2.3'\n")
+            new = git_bump.bump("minor", cwd=tmp_path, commit=False)
+            self.assertEqual(new, "1.3.0")
+            self.assertEqual((tmp_path / "__init__.py").read_text(), "__version__ = '1.3.0'\n")
+
+    def test_bump_pyproject_single_quoted_round_trip(self):
+        # End-to-end: a project whose pyproject.toml uses single-quoted
+        # version = '...' must bump cleanly via auto-detection.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "pyproject.toml").write_text("[project]\nversion = '0.1.0'\n")
+            new = git_bump.bump("patch", cwd=tmp_path, commit=False)
+            self.assertEqual(new, "0.1.1")
+            self.assertEqual(
+                (tmp_path / "pyproject.toml").read_text(),
+                "[project]\nversion = '0.1.1'\n",
+            )
 
     def test_bump_rejects_existing_tag(self):
         tmp = self._make_git_repo('{"version": "0.1.0"}\n', "package.json")

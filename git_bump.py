@@ -38,10 +38,10 @@ _DETECT = [
         r'(?P<prefix>"version"\s*:\s*")(?P<v>[0-9A-Za-z.\-+]+)(?P<suffix>")'
     )),
     ("pyproject.toml", re.compile(
-        r"(?m)^(?P<prefix>version\s*=\s*\")(?P<v>[0-9A-Za-z.\-+]+)(?P<suffix>\")"
+        r"(?m)^(?P<prefix>version\s*=\s*[\"'])(?P<v>[0-9A-Za-z.\-+]+)(?P<suffix>[\"'])"
     )),
     ("__init__.py", re.compile(
-        r"(?m)^(?P<prefix>__version__\s*=\s*\")(?P<v>[0-9A-Za-z.\-+]+)(?P<suffix>\")"
+        r"(?m)^(?P<prefix>__version__\s*=\s*[\"'])(?P<v>[0-9A-Za-z.\-+]+)(?P<suffix>[\"'])"
     )),
     ("VERSION", re.compile(
         r"(?m)^(?P<v>[0-9A-Za-z.\-+]+)$"
