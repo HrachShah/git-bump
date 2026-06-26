@@ -49,6 +49,43 @@ class TestParseSemver(unittest.TestCase):
         with self.assertRaises(ValueError):
             git_bump.parse_semver("not-a-version")
 
+    def test_rejects_empty_prerelease_identifier(self):
+        # Per SemVer 2.0.0 §9 item 2: identifiers MUST NOT be empty. The
+        # original regex `[0-9A-Za-z.-]+` accepted dot-separated empty
+        # segments like '..' or '.a' / 'a.'.
+        for bad in ("1.2.3-..", "1.2.3-.", "1.2.3-a..b", "1.2.3-.a", "1.2.3-a."):
+            with self.assertRaises(ValueError, msg=f"should reject {bad!r}"):
+                git_bump.parse_semver(bad)
+
+    def test_rejects_numeric_prerelease_with_leading_zero(self):
+        # §9 item 4: numeric identifiers MUST NOT include leading zeroes.
+        for bad in ("1.2.3-01", "1.2.3-00", "1.2.3-0.3.07"):
+            with self.assertRaises(ValueError, msg=f"should reject {bad!r}"):
+                git_bump.parse_semver(bad)
+
+    def test_rejects_build_metadata(self):
+        # git-bump cannot carry build metadata through a bump (next_version
+        # rebuilds from major/minor/patch and drops the suffix), so silently
+        # stripping '+...' would let the user tag v1.2.3 while the version
+        # file still claims 1.2.3+build. Reject with a clear message.
+        with self.assertRaises(ValueError) as cm:
+            git_bump.parse_semver("1.2.3+build")
+        self.assertIn("build metadata", str(cm.exception))
+        self.assertIn("+build", str(cm.exception))
+        with self.assertRaises(ValueError):
+            git_bump.parse_semver("1.2.3+")
+        with self.assertRaises(ValueError):
+            git_bump.parse_semver("1.2.3-a+b")
+
+    def test_accepts_valid_edge_case_prereleases(self):
+        # Alphanumeric identifiers may contain hyphens anywhere except the
+        # leading position is unrestricted (semver only forbids leading-zero
+        # numerics). Make sure the tighter regex still accepts these.
+        self.assertEqual(git_bump.parse_semver("1.2.3-a-"), (1, 2, 3, "a-"))
+        self.assertEqual(git_bump.parse_semver("1.2.3-x-y-z.-"), (1, 2, 3, "x-y-z.-"))
+        self.assertEqual(git_bump.parse_semver("1.2.3-0"), (1, 2, 3, "0"))
+        self.assertEqual(git_bump.parse_semver("1.2.3-0.3.7"), (1, 2, 3, "0.3.7"))
+
 
 class TestNextVersion(unittest.TestCase):
     def test_patch(self):
@@ -307,6 +344,31 @@ class TestBump(unittest.TestCase):
             with self.assertRaises(ValueError):
                 git_bump.bump("patch", cwd=tmp_path, commit=False)
             self.assertEqual((tmp_path / "VERSION").read_text(), "0\n")
+
+    def test_bump_set_rejects_invalid_prerelease_identifier(self):
+        # '1.2.3-a..b' has an empty dot-separated prerelease identifier and
+        # is rejected by parse_semver. The fix must propagate this rejection
+        # through bump()'s --set validation, and the file must NOT be mutated
+        # on the error path.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "VERSION").write_text("1.2.3\n")
+            with self.assertRaises(ValueError) as cm:
+                git_bump.bump("patch", set_version="1.2.3-a..b", cwd=tmp_path, commit=False)
+            self.assertIn("1.2.3-a..b", str(cm.exception))
+            self.assertEqual((tmp_path / "VERSION").read_text(), "1.2.3\n")
+
+    def test_bump_set_rejects_build_metadata(self):
+        # '1.2.3+build' is valid SemVer 2.0.0 but git-bump cannot carry
+        # build metadata through a bump, so --set with build metadata is
+        # rejected. The file must NOT be mutated on the error path.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "VERSION").write_text("1.2.3\n")
+            with self.assertRaises(ValueError) as cm:
+                git_bump.bump("patch", set_version="1.2.3+build", cwd=tmp_path, commit=False)
+            self.assertIn("build metadata", str(cm.exception))
+            self.assertEqual((tmp_path / "VERSION").read_text(), "1.2.3\n")
 
 
 class TestCLI(unittest.TestCase):
