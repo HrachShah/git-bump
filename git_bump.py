@@ -145,6 +145,8 @@ def bump(
     start = Path(cwd) if cwd is not None else Path(".")
     if file is not None:
         path = Path(file)
+        if not path.is_absolute():
+            path = start / path
         regex = next((r for n, r in _DETECT if n == path.name), None)
         if regex is None:
             raise ValueError(f"unsupported file: {path.name} (use package.json, pyproject.toml, __init__.py, or VERSION)")

@@ -278,6 +278,16 @@ class TestBump(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 git_bump.bump("patch", cwd=tmp_path, commit=True)
 
+    def test_bump_explicit_relative_file_resolves_from_cwd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "VERSION").write_text("1.0.0\n")
+            new = git_bump.bump(
+                "patch", file="VERSION", cwd=tmp_path, commit=False
+            )
+            self.assertEqual(new, "1.0.1")
+            self.assertEqual((tmp_path / "VERSION").read_text(), "1.0.1\n")
+
     def test_bump_explicit_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
