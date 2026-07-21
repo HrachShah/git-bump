@@ -49,6 +49,13 @@ class TestParseSemver(unittest.TestCase):
         with self.assertRaises(ValueError):
             git_bump.parse_semver("not-a-version")
 
+    def test_rejects_numeric_prerelease_with_leading_zero(self):
+        with self.assertRaises(ValueError):
+            git_bump.parse_semver("1.2.3-01")
+
+    def test_accepts_build_metadata_with_numeric_identifier(self):
+        self.assertEqual(git_bump.parse_semver("1.2.3+20260721"), (1, 2, 3, None))
+
 
 class TestNextVersion(unittest.TestCase):
     def test_patch(self):
