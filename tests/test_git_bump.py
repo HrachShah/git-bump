@@ -49,6 +49,13 @@ class TestParseSemver(unittest.TestCase):
         with self.assertRaises(ValueError):
             git_bump.parse_semver("not-a-version")
 
+    def test_rejects_numeric_prerelease_with_leading_zero(self):
+        with self.assertRaises(ValueError):
+            git_bump.parse_semver("1.2.3-01")
+
+    def test_accepts_build_metadata_with_numeric_identifier(self):
+        self.assertEqual(git_bump.parse_semver("1.2.3+20260721"), (1, 2, 3, None))
+
 
 class TestNextVersion(unittest.TestCase):
     def test_patch(self):
@@ -277,6 +284,16 @@ class TestBump(unittest.TestCase):
             (tmp_path / "VERSION").write_text("1.0.0\n")
             with self.assertRaises(RuntimeError):
                 git_bump.bump("patch", cwd=tmp_path, commit=True)
+
+    def test_bump_explicit_relative_file_resolves_from_cwd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "VERSION").write_text("1.0.0\n")
+            new = git_bump.bump(
+                "patch", file="VERSION", cwd=tmp_path, commit=False
+            )
+            self.assertEqual(new, "1.0.1")
+            self.assertEqual((tmp_path / "VERSION").read_text(), "1.0.1\n")
 
     def test_bump_explicit_file(self):
         with tempfile.TemporaryDirectory() as tmp:
